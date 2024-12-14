@@ -1,0 +1,771 @@
+---
+title: "Housing Prices Price Prediction and Market Analysis"
+author: "Jo.Pitt Ajibade"
+format: pdf
+editor: visual
+---
+
+# 1. Introduction
+
+Housing prices play a critical role in shaping not only the lives of individuals and families but also the overall economy of a country. This project aims to develop a predictive model for housing prices in Senegal. By shedding light on the dynamics of the housing market, the model seeks to enhance understanding of pricing mechanisms and promote fairness and transparency in real estate transactions.
+
+This report provides an analysis of housing prices and market trends, showcasing data preprocessing and visualization techniques using R, the tidyverse suite, and ggplot2.
+
+## 1.1 Data Source
+
+The data source used for this analysis is the urban housing data set in Senegal that can be found in the data folder.
+
+## 1.2 R Packages
+
+Below is the list of the packages used for this analysis. **`magrittr`** provides pipe operators such as `%>%` and `%<>%`, allowing for more readable and concise data manipulation workflows by chaining commands together. The package **`lubridate`** simplifies date and time operations, making it easier to parse, extract, and manipulate temporal data while **`tidyverse`** allows us to ge a comprehensive collection of R packages tailored for data science, including `dplyr` and `tidyr` for data manipulation and `ggplot2` for creating detailed and customizable visualizations. We use **`plotly`** which enables the creation of interactive and dynamic plots, including 3D visualizations and web-based graphics, enhancing the interactivity of visual presentations. with **`corrplot`** that specializes in visualizing correlation matrices, using methods like heatmaps and circle plots to simplify the interpretation of relationships between variables. We will use **`kableExtra`** that works alongside `knitr`'s `kable()` to produce complex, polished HTML or LaTeX tables, useful for presenting summary statistics and other data outputs in a clean and professional format and **`fastDummies`** provides efficient methods for creating dummy variables from categorical data, streamlining the process of preparing datasets for machine learning models. **`glmnet`** will be used to implement Lasso and Ridge regression methods, offering regularization techniques to improve model performance and prevent overfitting.
+
+We will use the following libraries to implement our predictive model:
+
+-   **`randomForest`**: Builds ensemble models using decision trees to enhance predictive performance and mitigate overfitting.
+
+-   **`xgboost`**: Implements gradient boosting, a powerful technique for building predictive models with high accuracy, while providing tools for regularization and hyperparameter tuning.
+
+-   **`e1071`**: Provides a suite of tools for various machine learning techniques, including Support Vector Regression (SVR) and kernel-based learning algorithms.
+
+These packages collectively enable efficient data handling, analysis, visualization, and modeling, making them essential for this project.
+
+```{r}
+#the Libraries
+library(dplyr)
+library(tidyverse) 
+library(lubridate)
+library(ggplot2)
+library(ploty)
+library(corrplot)
+library(kableExtra)
+library(fastDummies)
+library(glmnet)
+library(randomForest)
+library(caret)
+library(xgboost)
+library(e1071)
+```
+
+# 2. Data Loading and Analysis
+
+At first, the data set consists of one CSV file is downloaded and saved as local files and then are loaded into R.
+
+```{r}
+## load data into R
+raw.data<- read.csv("C:/Users/Joji/Documents/Housing_Prices/data/urban_housing_dataset.csv")
+dim(raw.data)
+```
+
+\[1\] 5000 11
+
+The data set contains 5000 rows, with each corresponding to one house. It has 11 columns each corresponding to characteristics of a house:
+
+1.  **`Square Footage`**: The total area of the house in square feet. Larger houses tend to have higher prices due to their size and utility.
+
+2.  **`Bedrooms`**: The number of bedrooms in the house. This feature reflects the capacity of the house to accommodate people, influencing its market value.
+
+3.  **`Bathrooms`**: The number of bathrooms in the house. Similar to bedrooms, this affects the convenience and usability of the house, impacting its price.
+
+4.  **`Year Built`**: The year in which the house was constructed. Older houses may require more maintenance, potentially lowering their value, whereas newer houses might command higher prices due to modern amenities and materials.
+
+5.  **`Lot Size`**: The size of the land on which the house is built. Larger lots often increase the value of the property, especially in high-demand areas.
+
+6.  **`Neighborhood`**: The location of the house, more likely the Region where the house is located. Neighborhoods with better schools, amenities, or lower crime rates typically see higher house prices.
+
+7.  **`School District Rating`**: A measure of the quality of schools in the vicinity. Properties in areas with high-rated school districts are often more desirable, particularly to families.
+
+8.  **`Crime Rate`**: The level of criminal activity in the area. Lower crime rates tend to increase the desirability and value of properties in a neighborhood.
+
+9.  **`Proximity to Amenities`**: The distance or ease of access to local facilities such as shops, parks, and public transportation. Closer proximity to amenities usually increases the property's appeal and price.
+
+10. **`Economic Indicator`**: A measure reflecting the economic conditions of the area, such as median income or employment rates. Higher economic activity in the area may correlate with higher property values.
+
+11. **`Price`**: The target variable representing the market price of the house. This is what the predictive model aims to forecast using the other features.
+
+These features collectively capture various physical, locational, and socioeconomic aspects of a property, which are key determinants of housing prices. Here we have a look at the first 10 rows.
+
+```{r}
+##Check the first 10 rows
+raw.data[1:10, 1:11] %>%
+  kable('pipe', booktabs=T, caption='Table 1: Raw Data') %>%
+  kable_styling(font_size=5, latex_options = c('striped', 'hold_position', 'repeat_header'))
+```
+
+![`Table 1: Raw Data ( First 10 rows only)`](images/Table1.png)
+
+Our goal is to predict the house prices and from it make a analysis. Let's look first at the summary of each variables.
+
+```         
+summary(raw.data)
+```
+
+```         
+square_footage   bedrooms        bathrooms       year_built     lot_size          
+Min.: 114        Min.: 1.000     Min. :1.000     Min.:1950      Min.:-1755        
+1st Qu.:1457     1st Qu.:2.000   1st Qu.:2.000   1st Qu.:1968   1st Qu.: 3642   
+Median :1794     Median :3.000   Median :2.000   Median :1986   Median : 5049  
+Mean   :1793     Mean   :2.757   Mean   :1.997   Mean   :1986   Mean   : 5021     3rd Qu.:2130     3rd Qu.:3.000   3rd Qu.:2.000   3rd Qu.:2004   3rd Qu.: 6372     Max.   :3592     Max.   :5.000   Max.   :4.000   Max.   :2022   Max.   :11540                     
+neigborhood       school_district_rating  crime_rate     proximity_to_amenities
+Length: 5000      Min.   : 1.400          Min.   : 1.000   Min.   : 0.000 
+Class: Character  1st Qu.: 6.000          1st Qu.: 3.200   1st Qu.: 2.600
+Mode: Character   Median : 7.000          Median : 5.500   Median : 5.000
+Mean   : 7.014          Mean   : 5.497   Mean   : 5.011
+3rd Qu.: 8.100          3rd Qu.: 7.700   3rd Qu.: 7.400
+Max.   :13.100          Max.   :10.000   Max.   :10.000
+
+economic_indicator     price        
+Min.   : 27.00     Min.   : 277758  
+1st Qu.: 85.80     1st Qu.: 601493  
+Mean   : 99.79     Mean   : 678430  
+3rd Qu.:113.50     3rd Qu.: 752875  
+Max.   :170.20     Max.   :1104313  
+```
+
+![`Figure 1: Histogram of the Numerical Features Distribution`](images/fig4.png)
+
+We can distinguish 2 types of distribution from the Figure 1:
+
+-   For **`crime_rate`**, **`Proximity_to_Amenities`**, and **`Year_Built`**, the data exhibits a relatively even distribution with noticeable peaks spanning across different quartiles.
+
+-   In contrast, other variables show a more concentrated distribution characterized by a single prominent peak.
+
+Let us zoom on the variable **`price`** that we want to predict on figure 2.
+
+![`Figure 2: Histogram of the Price Distribution`](images/fig1.png)
+
+The figure 2 shows that in the data set, we have houses that range in between 277,758 XOF and 1,104,313 XOF. The Distribution Histogram of the Price reveals that the price is not distributed evenly with a small distribution around the 250,000 to 500,000 XOF mark and after the 1,000,000 XOF mark. The mean price ranges in between 500,000 XOF and 825,000 XOF.
+
+```{r}
+##Check the minimum and maximum price for a house
+min.price <- min(raw.data$price, na.rm = TRUE)
+max.price <- max(raw.data$price, na.rm = TRUE)
+mean.price <- mean(raw.data$price, na.rm = TRUE)
+cat("Minimum Price:", min.price, "XOF")
+cat("Maximum Price:", max.price, "XOF")
+cat("Mean Price:", mean.price, "XOF")
+```
+
+```         
+Minimum Price: 277758 XOF
+
+Maximum Price: 1104313 XOF
+
+Mean Price: 678429.6 XOF
+```
+
+# 3 Data Preparation
+
+## 3.1 Data Cleaning
+
+In a data set containing 5,000 rows, it is crucial to ensure that there are no missing values within the columns and no duplicate rows. Addressing these issues helps maintain the integrity and reliability of the data, which is essential for accurate analysis and meaningful insights.
+
+```{r}
+#Check for missing values
+colSums(is.na(raw.data))
+#Check for duplicated rows
+sum(duplicated(raw.data))
+```
+
+```         
+square_footage      bedrooms         bathrooms 
+0             0                 0 
+year_built      lot_size         neighborhood 
+0             0                    0 
+school_district_rating      crime_rate        proximity_to_amenities 
+0               0                             0 
+economic_indicator      price 
+0          0 
+```
+
+\[1\] 0
+
+This indicates that there are no missing values in any columns of the data set, and there are no duplicated rows present. Therefore, we can proceed with our analysis using the data set as is, without the need for any modifications or removals.
+
+## 3.2. Feature Pre-processing
+
+### a. Encoding Categorical Data and Normalization
+
+Before selecting the features, it is essential to check whether the features in your data set are **categorical** or **numerical**, as the preprocessing steps for these two types of data can differ significantly.
+
+```{r}
+str(data)
+```
+
+```         
+$ square_footage        : int  2485 1518 1982 2116 2002 1747 2556 1753 2809 1769 ...
+$ bedrooms              : int  2 2 4 3 2 2 2 4 3 3 ...
+$ bathrooms             : int  2 2 1 2 3 2 2 2 3 2 ...
+$ year_built            : int  1975 1956 1963 1982 2018 1997 1992 1991 1951 1971 ...
+$ lot_size              : int  2960 3492 2549 2966 8444 11000 10006 5939 7358 5805 ...
+$ neighborhood          : chr  "Podor" "Tambacounda" "St-Louis" "Touba" ...
+$ school_district_rating: num  6.6 5.5 10.2 8.5 8.2 5.8 8.5 4.7 5.6 8.1 ...
+$ crime_rate            : num  10 8.1 9.7 3.4 3.3 2.1 3.1 5 3.6 8.9 ...
+$ proximity_to_amenities: num  7.5 3.1 8.4 9.2 5 3.9 7.1 7.5 0.7 8.6 ...
+$ economic_indicator    : num  115 104 126 104 92 ...
+$ price                 : int  691535 560974 741437 811610 658174 644299 736241 649098 867119 770872 ...
+```
+
+We observe that the data set contains predominantly numerical values, with the exception of the 'neighborhood' feature, which is categorical. This could pose an issue later in the analysis, so it's essential to encode this categorical variable into a numerical format. Additionally, the numerical features in the data set have different units of measurement and ranges. To ensure fair treatment of all features, we need to scale these numerical values accordingly.
+
+```{r}
+# Separate numerical and categorical features
+num_data <- raw.data %>% select(where(is.numeric))  
+cat_data <- raw.data %>% select(where(is.factor) | where(is.character))  
+#Scale the numerical value and transform the categorical ones
+num_data_scaled <- num_data %>% mutate(across(everything(), ~ ( . - min(.) ) / (max(.) - min(.) ) ))
+cat_data_encoded <- cat_data %>% mutate(across(everything(), ~ as.numeric(as.factor(.))))
+#put them all together
+final_data <- bind_cols(num_data_scaled, cat_data_encoded)
+head(final_data)
+```
+
+```         
+square_footage    bedrooms   bathrooms   year_built  lot_size
+1      0.6817136     0.25    0.3333333   0.34722222   0.3546446
+2      0.4036803     0.25    0.3333333   0.08333333   0.3946596
+3      0.5370903     0.75    0.0000000   0.18055556   0.3237307
+4      0.5756182     0.50    0.3333333   0.44444444   0.3550959
+5      0.5428407     0.25    0.6666667   0.94444444   0.7671305
+6      0.4695227     0.25    0.3333333   0.65277778   0.9593832
+
+school_district_rating  crime_rate      proximity_to_amenities
+1              0.4444444  1.0000000      0.75
+2              0.3504274  0.7888889      0.31
+3              0.7521368  0.9666667      0.84
+4              0.6068376  0.2666667      0.92
+5              0.5811966  0.2555556      0.50
+6              0.3760684  0.1222222      0.39
+
+economic_indicator      price          neighborhood
+1          0.6152235      0.5006043      3
+2          0.5384078      0.3426463      5
+3          0.6892458      0.5609778      4
+4          0.5356145      0.6458760      7
+5          0.4539106      0.4602428      7
+6          0.3903631      0.4434563      3
+```
+
+Now that we have a homogeneous data set, we can proceed with the pre-processing and select our features.
+
+### b. Feature Selection
+
+To build a prediction model where the target variable is "price" and the rest of the variables to be used as features, we need to split the dataset into the training and testing set for the model's validation. However, it is important to choose which features are to be taken in account.
+
+```{r}
+# Compute correlation matrix
+cor_matrix <- cor(raw.data %>% select(where(is.numeric)), use = "complete.obs")
+
+# Visualize the correlation matrix using a heatmap
+library(corrplot)
+corrplot(cor_matrix, method = "circle", type = "upper", tl.cex = 0.7)
+```
+
+![Figure 2: Correlation Matrix Heat-map](images/fig2.png)
+
+In Figure 2, we observe a heatmap displaying all the correlations among the various variables in the data set. From the correlation matrix, we can identify several notable relationships:
+
+-   **High Positive Correlation**: The variable "price" shows a strong positive correlation of **0.658** with "square_footage." This indicates that larger square footage is associated with higher property prices.
+-   **Moderate Positive Correlation**: "Price" also has a positive correlation of **0.217** and **0.171** with the number of "bedrooms" and "bathrooms," respectively. This suggests that properties with more bedrooms or bathrooms tend to be priced higher.
+-   **Negative Correlation**: The variable "price" is negatively correlated with "year_built" (**-0.203**) and has a weak **negative correlation** with "crime_rate" (**-0.105**). This implies that older houses and those located in areas with higher crime rates are generally less expensive.
+
+Overall, the heat map provides valuable insights into how different variables influence the price of properties, helping to identify key factors that contribute to price variations which are the "square_footage", "bedroom", "bathrooms", "year_built" and "crime_rate" which are the key features selected for the prediction model.
+
+![Figure 3: Scatter Plot for the Features vs the Target](images/fig3.png)
+
+The figure highlights a notable positive correlation between square footage and housing prices, demonstrating a linear trend: as the square footage increases, the price rises accordingly. This observation aligns with expectations, as larger properties (e.g., 64m² versus 120m²) typically command higher prices.
+
+Additionally, the data shows that the number of bedrooms can lead to a wide range of prices, but as the number of bedrooms increases, we see prices start higher compared to properties with fewer bedrooms. Similarly, the number of bathrooms follows the same trend, indicating that adding more bathrooms may not have a significant impact on the property's value. In a similar vein, while more bedrooms generally lead to higher prices, properties with a large number of bedrooms tend to converge around the mean price, suggesting a plateau effect.
+
+Interestingly, the data reveals that neither crime rate nor the age of the estate seems to affect the prices significantly. This implies that, regardless of the crime rate or the age of the property, people continue to buy homes at comparable price levels.
+
+```{r}
+#New feature selection
+#Feature selection
+target_variable <- "price" 
+selected_features <- c("bedrooms", "bathrooms", "year_built", "crime_rate", "square_footage")
+final_data_selected <- final_data %>% select(all_of(selected_features), target_variable)
+# View the selected data
+head(final_data_selected)
+```
+
+In these scatter plots, we observe that after a certain threshold for each feature, the price either stops increasing or remains constant. This phenomenon can improve our model's performance because, in real life, even if the surface area of a house increases, the price may not always rise accordingly. Other factors may limit this price increase, which is why we will introduce polynomial features to our key features. The features selected for polynomial transformations are crime_rate and year_built. The relationship between these features and the price appears non-linear, making it challenging to capture with a simple linear model.
+
+```{r}
+#Create Polynomial Features
+final_data_selected <- final_data_selected %>%
+  mutate(
+    crime_rate_squared = crime_rate^2,
+    year_built_squared = year_built^2
+  )
+
+# View the selected data
+head(final_data_selected)
+```
+
+### c. Train-Test Split
+
+After selecting the relevant features, we split our data set into a training and testing set. For simplicity, we'll use a 70-30 split, allocating 70% of the data for training the model and the remaining 30% for testing. We will then apply Lasso regression for prediction, as it is effective for both feature selection and regularization, helping to prevent over fitting.
+
+```{r}
+## Split Train-Test
+# Split data into training and testing sets (70-30 split)
+set.seed(123)  # For reproducibility
+
+# Split data
+train_index <- sample(1:nrow(final_data_selected), 0.7 * nrow(final_data_selected))  
+train_data <- final_data_selected[train_index, ]
+test_data <- final_data_selected[-train_index, ]
+
+# Prepare features and target for training
+X_train <- as.matrix(train_data[, features])  
+y_train <- train_data[, target_variable]     
+X_test <- as.matrix(test_data[, features])   
+y_test <- test_data[, target_variable]  
+
+# View the training and test data dimensions
+cat("Training data dimensions:", dim(X_train), "\n")
+cat("Testing data dimensions:", dim(X_test), "\n")
+```
+
+# 4. Predictive Modeling and Evaluation
+
+Before continuing, we need to set the standards for model evaluation. The metrics we will use are Root Mean Square Error (RMSE), Mean Absolute Error (MAE), and R-squared (R²). RMSE measures the average magnitude of the prediction errors, penalizing larger errors more heavily than smaller ones. It is calculated as the square root of the average squared differences between predicted and actual values, with lower RMSE values indicating better predictive accuracy. Unlike RMSE, MAE treats all errors equally, providing a straightforward measure of the average prediction error. Lower MAE values also indicate better accuracy. *R²*, or the coefficient of determination, measures the proportion of variance in the target variable that is explained by the model. It ranges from 0 to 1, with higher values indicating a better fit. An *R²* value of 1 means the model perfectly explains the variance in the target variable.
+
+```{r}
+#Evaluate the model
+evaluate_model <- function(actual, predicted) {
+  rmse <- sqrt(mean((actual - predicted)^2))
+  mae <- mean(abs(actual - predicted))
+  ss_res <- sum((actual - predicted)^2)
+  ss_tot <- sum((actual - mean(actual))^2)
+  r_squared <- 1 - (ss_res / ss_tot)
+  return(list(RMSE = rmse, MAE = mae, R_squared = r_squared))
+}
+```
+
+## 4.1. Linear Regression (using Lasso)
+
+```{r}
+# Predictions and Evaluation for Lasso
+y_pred_lasso <- predict(lasso_model, s = "lambda.min", newx = X_test)
+lasso_metrics <- evaluate_model(y_test, y_pred_lasso)
+print("Lasso Regression Metrics:")
+print(lasso_metrics)
+```
+
+Here is what we obtained for the Root Mean Square Error, R-Squared and Mean Absolute Value when applying the Lasso Regression:
+
+```         
+[1] "Lasso Regression Metrics:"
+> print(lasso_metrics)
+$RMSE
+[1] 0.09371319
+
+$MAE
+[1] 0.07551437
+
+$R_squared
+[1] 0.5239455
+```
+
+These results indicate that the R² value of **0.5397** means approximately **53.97% of the variance in housing prices** is explained by the selected features. This is reasonable given that only **5 out of the 10 features** in the data set were included in the model. However, the remaining **46.03% of variance** suggests that other factors, not included in the model, also significantly influence housing prices.
+
+The low RMSE of **0.0939** demonstrates that the model's predictions are, on average, very close to the actual values, which reflects good predictive accuracy. Similarly, the MAE of **0.0752** aligns well with the RMSE, reinforcing that the model is making relatively small errors. Considering the scale of the target variable (price), these metrics suggest that the model is performing satisfactorily for this analysis.
+
+## 4.2. Linear Regression
+
+```{r}
+linear_model <- lm(price ~ ., data = train_data)
+linear_pred <- predict(linear_model, test_data)
+linear_metrics <- evaluate_model(test_data$price, linear_pred)
+print("Linear Regression Metrics:")
+print(linear_metrics)
+```
+
+```         
+[1] "Linear Regression Metrics:"
+> print(linear_metrics)
+$RMSE
+[1] 0.09375261
+
+$MAE
+[1] 0.07550447
+
+$R_squared
+[1] 0.5235448
+```
+
+These results indicate that the *R²* value of 0.5235 means approximately 52.35% of the variance in housing prices is explained by the selected features in the linear regression model. This is reasonable, especially considering that only 5 out of the 10 features in the dataset were included in the model. However, we can see the same values for the evaluation metrics when using the lasso regression.
+
+The low RMSE of 0.0938 demonstrates that the model's predictions are, on average, very close to the actual values, reflecting good predictive accuracy. Similarly, the MAE of 0.0755 aligns well with the RMSE, reinforcing that the model is making relatively small errors. Considering the scale of the target variable (price), these metrics suggest that the linear regression model is performing satisfactorily for this analysis.
+
+## 4.3. Random Forest
+
+```{r}
+# Random Forest
+rf_model <- randomForest(price ~ ., data = train_data, ntree = 500)
+rf_pred <- predict(rf_model, test_data)
+rf_metrics <- evaluate_model(test_data$price, rf_pred)
+print("Random Forest Metrics:")
+print(rf_metrics)
+```
+
+```         
+[1] "Random Forest Metrics:"
+> print(rf_metrics)
+$RMSE
+[1] 0.09821535
+
+$MAE
+[1] 0.07920733
+
+$R_squared
+[1] 0.4771055
+```
+
+The RMSE of 0.0982 shows that the model's predictions are, on average, somewhat close to the actual values, but with a larger average error compared to the Linear Regression model. The MAE of 0.0792 similarly indicates that the model makes relatively small errors on average. Given the scale of the target variable (price), these metrics suggest that the Random Forest model performs reasonably well but leaves room for improvement compared to simpler models like Linear Regression.
+
+## 4.4. Gradient Boosting
+
+```{r}
+# Gradient Boosting (XGBoost)
+dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+dtest <- xgb.DMatrix(data = X_test)
+xgb_model <- xgboost(data = dtrain, nrounds = 100, objective = "reg:squarederror", verbose = 0)
+xgb_pred <- predict(xgb_model, dtest)
+xgb_metrics <- evaluate_model(y_test, xgb_pred)
+print("XGBoost Metrics:")
+print(xgb_metrics)
+```
+
+```         
+[1] "XGBoost Metrics:"
+> print(xgb_metrics)
+$RMSE
+[1] 0.1030294
+
+$MAE
+[1] 0.08313842
+
+$R_squared
+[1] 0.42459
+```
+
+These results indicate that the *R²* value of 0.4246 means approximately 42.46% of the variance in housing prices is explained by the selected features in the XGBoost model. This suggests that while the model captures a portion of the variance, a significant amount (57.54%) remains unexplained, likely due to factors not included in the model.
+
+The RMSE of 0.1030 shows that the model's predictions are, on average, less accurate compared to both Linear Regression and Random Forest, with a slightly higher error margin. The MAE of 0.0831 indicates that the model makes relatively small errors on average, but these are still larger than those of the simpler models. Given the scale of the target variable (price), these metrics suggest that the XGBoost model has room for improvement, even though it is a powerful algorithm.
+
+## 4.5. Support Vector Regression
+
+```{r}
+# Support Vector Regression
+svr_model <- svm(price ~ ., data = train_data, kernel = "radial")
+svr_pred <- predict(svr_model, test_data)
+svr_metrics <- evaluate_model(test_data$price, svr_pred)
+print("SVR Metrics:")
+print(svr_metrics)
+```
+
+```         
+[1] "SVR Metrics:"
+> print(svr_metrics)
+$RMSE
+[1] 0.09700489
+
+$MAE
+[1] 0.07744808
+
+$R_squared
+[1] 0.489915
+```
+
+The RMSE of **0.0970** shows that the SVR model’s predictions are relatively close to the actual values, with an error margin that is slightly larger than that of the Linear Regression and Random Forest models. The MAE of **0.0774** suggests that the model is making small average errors, which is consistent with the relatively small RMSE. Given the scale of the target variable (price), these metrics indicate that the SVR model performs reasonably well but could still be improved compared to other models like Random Forest and Linear Regression.
+
+# 5. Hyper parameter Tuning
+
+## 5.1. Linear Regression
+
+With the predictive model showing a good enough prediction relatively close to the actual value, specially for the Linear Regression and Random Forest, we can further this using hyper parameter tuning. We will use model selection process by using the stepwise regression which will process iteratively adds or removes predictor variables to find the model with the lowest **Akaike Information Criterion (AIC)**. AIC balances model fit (residual error) and model complexity (number of predictors). Lower AIC values indicate better models.
+
+```{r}
+# Stepwise regression for feature selection
+step_model <- step(lm(price ~ ., data = train_data), direction = "both")
+```
+
+The stepwise regression results show a series of steps where predictors were either removed or considered for addition. Key observations include the starting AIC was **-16789.3** with all the variables.
+
+```         
+Start:  AIC=-16798.3
+price ~ square_footage + bedrooms + bathrooms + year_built + 
+crime_rate + crime_rate_squared + year_built_squared + interaction_term
+
+Df Sum of Sq    RSS    AIC
+- crime_rate          1    0.0001 28.670 -16800
+- interaction_term    1    0.0043 28.675 -16800
+- year_built_squared  1    0.0067 28.677 -16800
+<none>                            28.670 -16798
+- crime_rate_squared  1    0.0303 28.701 -16797
+- year_built          1    0.1063 28.777 -16787
+- bathrooms           1    1.6559 30.326 -16604
+- bedrooms            1    2.9636 31.634 -16456
+- square_footage      1    7.7084 36.379 -15967
+
+Step:  AIC=-16800.29
+price ~ square_footage + bedrooms + bathrooms + year_built + 
+crime_rate_squared + year_built_squared + interaction_term
+
+Df Sum of Sq    RSS    AIC
+- interaction_term    1    0.0060 28.676 -16802
+- year_built_squared  1    0.0067 28.677 -16802
+<none>                            28.670 -16800
++ crime_rate          1    0.0001 28.670 -16798
+- crime_rate_squared  1    0.0627 28.733 -16795
+- year_built          1    0.1063 28.777 -16789
+- bathrooms           1    1.6563 30.327 -16606
+- bedrooms            1    2.9651 31.635 -16458
+- square_footage      1   11.0395 39.710 -15662
+
+Step:  AIC=-16801.56
+price ~ square_footage + bedrooms + bathrooms + year_built + 
+crime_rate_squared + year_built_squared
+
+Df Sum of Sq    RSS    AIC
+- year_built_squared  1    0.0060 28.682 -16803
+<none>                            28.676 -16802
++ interaction_term    1    0.0060 28.670 -16800
++ crime_rate          1    0.0018 28.675 -16800
+- year_built          1    0.1093 28.786 -16790
+- crime_rate_squared  1    0.7346 29.411 -16715
+- bathrooms           1    1.6528 30.329 -16607
+- bedrooms            1    2.9800 31.656 -16458
+- square_footage      1   29.5182 58.195 -14326
+
+Step:  AIC=-16802.82
+price ~ square_footage + bedrooms + bathrooms + year_built + 
+crime_rate_squared
+
+Df Sum of Sq    RSS    AIC
+<none>                            28.682 -16803
++ year_built_squared  1    0.0060 28.676 -16802
++ interaction_term    1    0.0053 28.677 -16802
++ crime_rate          1    0.0015 28.681 -16801
+- crime_rate_squared  1    0.7364 29.419 -16716
+- bathrooms           1    1.6511 30.333 -16609
+- year_built          1    2.5621 31.244 -16505
+- bedrooms            1    2.9882 31.671 -16458
+- square_footage      1   29.5143 58.197 -14328
+```
+
+```{r}
+# Summary of the best model
+summary(step_model)
+```
+
+```         
+Call:
+lm(formula = price ~ square_footage + bedrooms + bathrooms + 
+year_built + crime_rate_squared, data = train_data)
+
+Residuals:
+Min       1Q   Median       3Q      Max 
+-0.23630 -0.06331 -0.01119  0.05524  0.31012 
+
+Coefficients:
+Estimate Std. Error t value Pr(>|t|)    
+(Intercept)         0.152158   0.007242  21.009   <2e-16 ***
+square_footage      0.630883   0.010522  59.961   <2e-16 ***
+bedrooms            0.118114   0.006191  19.079   <2e-16 ***
+bathrooms           0.113964   0.008036  14.182   <2e-16 ***
+year_built         -0.094019   0.005322 -17.666   <2e-16 ***
+crime_rate_squared -0.048461   0.005117  -9.471   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.0906 on 3494 degrees of freedom
+Multiple R-squared:  0.5686,    Adjusted R-squared:  0.568 
+F-statistic: 921.1 on 5 and 3494 DF,  p-value: < 2.2e-16
+```
+
+We started with all the variables: **`square_footage`**, **`bedrooms`**, **`bathrooms`**, **`year_built`**, **`crime_rate`**, **`crime_rate_squared`**, **`year_built_squared`**, and **`interaction_term`**. After performing stepwise regression, we reached a model with the lowest AIC of **-16803**, indicating it is the most efficient model based on the trade-off between model fit and complexity. The final selected features are: **`square_footage`**, **`bedrooms`**, **`bathrooms`**, **`year_built`**, and **`crime_rate_squared`**.
+
+Now, we again check the prediction model with a Linear Regression which gives us
+
+```{r}
+# Predictions
+step_pred <- predict(step_model, newdata = test_data)
+step_metrics <- evaluate_model(test_data$price, step_pred)
+print("Stepwise Linear Regression Metrics:")
+print(step_metrics)
+```
+
+```         
+[1] "Stepwise Linear Regression Metrics:"
+> print(step_metrics)
+$RMSE
+[1] 0.09388487
+
+$MAE
+[1] 0.07560143
+
+$R_squared
+[1] 0.5221996
+```
+
+The average prediction error, as measured by the RMSE of 0.0939, demonstrates good accuracy and indicates better performance than the Linear Regression model. The Lasso Regression model successfully minimizes the errors while maintaining a robust predictive capability.
+
+The stepwise regression approach successfully optimized the model by selecting the most significant predictors: square_footage, bedrooms, bathrooms, year_built, and crime_rate_squared. The final model demonstrates good predictive accuracy with an RMSE of 0.0939, an MAE of 0.0756, and an *R²* of 52.22% on the test data. This highlights the model's ability to explain housing price variability while maintaining simplicity and efficiency.
+
+## 5.2. Random Forest
+
+With the Random Forest model demonstrating reasonably accurate predictions close to the actual values, we further improved its performance using **hyperparameter tuning**. By varying the `mtry` parameter, which controls the number of features considered at each split, we applied a tuning grid with values of 2, 3, and 4. To ensure robust model evaluation, we used **5-fold cross-validation**, which repeatedly trains and validates the model on different subsets of the data. The tuning process identified `mtry = 3` as the optimal parameter, resulting in a model with improved predictive accuracy.
+
+```{r}
+##Random Forest
+# Define the tuning grid
+rf_grid <- expand.grid(mtry = c(2, 3, 4))  # Varying the number of features
+
+# Train the Random Forest with tuning
+rf_control <- trainControl(method = "cv", number = 5)  # 5-fold cross-validation
+rf_tuned <- train(
+  price ~ ., 
+  data = train_data, 
+  method = "rf", 
+  tuneGrid = rf_grid, 
+  trControl = rf_control, 
+  ntree = 500
+)
+
+# Best parameters and model
+print(rf_tuned$bestTune)
+rf_best <- rf_tuned$finalModel
+
+# Predictions
+rf_pred <- predict(rf_best, newdata = test_data)
+rf_metrics <- evaluate_model(test_data$price, rf_pred)
+print("Tuned Random Forest Metrics:")
+print(rf_metrics)
+```
+
+```         
+[1] "Tuned Random Forest Metrics:"
+> print(rf_metrics)
+$RMSE
+[1] 0.09842603
+
+$MAE
+[1] 0.07964488
+
+$R_squared
+[1] 0.4748598
+```
+
+The final evaluation metrics—RMSE (Root Mean Squared Error), MAE (Mean Absolute Error), and R-squared—showed slight improvements, with the model achieving an R-squared value of approximately 47.7%, indicating that it explains a moderate proportion of the variance in the target variable. By leveraging cross-validation and hyperparameter tuning, the Random Forest model successfully balanced prediction accuracy and generalizability.
+
+## 5.3. Gradient Boosting
+
+With the XGBoost model demonstrating strong predictive capabilities, we further optimized its performance through hyperparameter tuning. A grid search was performed over three key parameters: **max_depth (3, 5, 7)**, which controls the depth of each tree; eta (0.01, 0.1, 0.3), the learning rate that determines the contribution of each tree; and nrounds (50, 100, 200), representing the number of boosting iterations. For each combination of parameters, the model was trained using the training dataset (dtrain) with the objective function set to **reg:squarederror** to minimize squared error loss. Predictions were then made on the test dataset (dtest), and the results were evaluated using RMSE, MAE, and R-squared metrics.
+
+```{r}
+##XGBoost
+param_grid <- expand.grid(max_depth = c(3, 5, 7), eta = c(0.01, 0.1, 0.3), nrounds = c(50, 100, 200))
+results <- list()
+
+for (i in 1:nrow(param_grid)) {
+  params <- param_grid[i, ]
+  model <- xgboost(data = dtrain, max_depth = params$max_depth, eta = params$eta,
+                   nrounds = params$nrounds, objective = "reg:squarederror", verbose = 0)
+  preds <- predict(model, dtest)
+  results[[i]] <- evaluate_model(y_test, preds)
+}
+
+best_result <- which.min(sapply(results, function(x) x$RMSE))
+cat("Best XGBoost Parameters and Metrics:\n")
+print(param_grid[best_result, ])
+print(results[[best_result]])
+```
+
+```         
+$RMSE
+[1] 0.09525454
+
+$MAE
+[1] 0.07700065
+
+$R_squared
+[1] 0.5081568
+```
+
+The tuning process identified the best parameter combination that minimized the RMSE, resulting in improved performance. The final evaluation metrics showed an RMSE of **0.0953**, an MAE of **0.0770**, and an R-squared value of approximately **50.8%**. This indicates that the model explains about 50.8% of the variance in the target variable, highlighting its effectiveness in balancing prediction accuracy and generalization. By systematically exploring the hyperparameter space, the XGBoost model achieved strong and reliable predictive performance.
+
+## 5.4. Support Vector Regression
+
+With the **Support Vector Regression (SVR)** model, we achieved strong predictive performance by leveraging **hyperparameter tuning**. A grid search was conducted across three critical parameters: `C` (regularization parameter, controlling the trade-off between margin size and error), `epsilon` (the tolerance for prediction errors), and `gamma` (defining the influence of individual data points in the radial basis kernel). The grid included values for `C` as **0.1, 1, and 10**, `epsilon` as **0.01, 0.1, and 1**, and `gamma` as **0.001, 0.01, and 0.1**, resulting in a thorough exploration of the hyperparameter space.
+
+For each parameter combination, the SVR model was trained on the training dataset using the **radial basis function kernel** and evaluated on the test dataset. The model's performance was assessed using **RMSE** (Root Mean Squared Error), **MAE** (Mean Absolute Error), and **R-squared** metrics. The best parameter combination identified was **C = 10**, **epsilon = 1**, and **gamma = 0.001**, which minimized the RMSE.
+
+```{r}
+##SVR
+# Define a grid for tuning
+svr_grid <- expand.grid(
+  C = c(0.1, 1, 10), 
+  epsilon = c(0.01, 0.1, 1),
+  gamma = c(0.001, 0.01, 0.1)
+)
+
+# Perform grid search
+svr_results <- list()
+for (i in 1:nrow(svr_grid)) {
+  params <- svr_grid[i, ]
+  svr_model <- svm(
+    price ~ ., 
+    data = train_data, 
+    kernel = "radial", 
+    cost = params$C, 
+    epsilon = params$epsilon, 
+    gamma = params$gamma
+  )
+  
+  svr_pred <- predict(svr_model, test_data)
+  svr_results[[i]] <- list(
+    params = params,
+    metrics = evaluate_model(test_data$price, svr_pred)
+  )
+}
+
+# Find the best parameters
+best_svr <- which.min(sapply(svr_results, function(x) x$metrics$RMSE))
+print("Best SVR Parameters and Metrics:")
+print(svr_results[[best_svr]])
+```
+
+The final evaluation metrics were impressive, with an RMSE of **0.0942**, an MAE of **0.0771**, and an R-squared value of approximately **51.9%**. This indicates that the SVR model explains about 51.9% of the variance in the target variable, showcasing its effectiveness in producing accurate and reliable predictions. Through systematic tuning, the SVR model achieved a strong balance between model complexity and prediction accuracy.
+
+```         
+1] "Best SVR Parameters and Metrics:"
+> print(svr_results[[best_svr]])
+$params
+   C epsilon gamma
+9 10       1 0.001
+
+$metrics
+$metrics$RMSE
+[1] 0.09419533
+
+$metrics$MAE
+[1] 0.07705328
+
+$metrics$R_squared
+[1] 0.5190344
+```
+
+# 6. Conclusion
+
+Based on the evaluation metrics for **Linear Regression**, **Random Forest**, **XGBoost**, and **Support Vector Regression (SVR)** in the context of house price prediction, we conclude that **Linear Regression** is the best-performing model. It achieves the lowest **RMSE** (0.0938) and the highest **R²** (52.4%), indicating that house prices exhibit a strong linear relationship with the predictor variables.
+
+**Support Vector Regression (SVR)** follows closely, with an **RMSE** of 0.0970 and an **R²** of 48.99%. Its ability to capture subtle non-linear relationships using the **radial basis function kernel** gives it a slight edge over more complex models like Random Forest and XGBoost.
+
+**Random Forest** performs moderately well, with an **RMSE** of 0.0982 and an **R²** of 47.7%. While it can capture non-linear interactions between features, it does not outperform simpler models in this specific task.
+
+**XGBoost** demonstrates the weakest performance, with the highest **RMSE** (0.1030) and the lowest **R²** (42.5%). Despite its power as a boosting algorithm, its results suggest that either further hyperparameter tuning is required or it struggles to capture the data's underlying structure effectively.
+
+It is interesting to note that **Linear Regression** emerges as the most effective model, underscoring the significance of linear relationships in house price prediction. Its simplicity, interpretability, and accuracy make it a reliable choice. However, to further improve performance, additional features (e.g., location, neighborhood quality, or market conditions) can be explored. Refining hyperparameters or incorporating feature engineering for non-linear models like SVR and XGBoost may also help capture more complex patterns and boost prediction accuracy.
